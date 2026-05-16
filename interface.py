@@ -19,6 +19,8 @@ if "pdf_context" not in st.session_state:
     st.session_state.pdf_context = ""
 if "pdf_summary" not in st.session_state:
     st.session_state.pdf_summary = ""
+if "uploaded_file_names" not in st.session_state:
+    st.session_state.uploaded_file_names = []
 
 # --- SIDEBAR FEATURES ---
 with st.sidebar:
@@ -34,33 +36,40 @@ with st.sidebar:
         
     st.write("---")
     
-    # PDF Upload Feature
+    # MULTIPLE PDF Upload Feature
     st.subheader("📄 PDF Document Analysis")
-    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+    # accept_multiple_files=True allows users to upload more than one PDF
+    uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
     
-    if uploaded_file is not None:
-        with st.spinner("Extracting text from PDF..."):
-            try:
-                reader = PdfReader(uploaded_file)
-                extracted_text = ""
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        extracted_text += text + "\n"
-                
-                # If a new PDF is uploaded, update context and reset previous summary
-                if st.session_state.pdf_context != extracted_text:
-                    st.session_state.pdf_context = extracted_text
-                    st.session_state.pdf_summary = ""  # Reset summary to trigger regeneration
-                st.success("PDF uploaded and processed successfully!")
-            except Exception as e:
-                st.error(f"Error reading PDF: {e}")
+    if uploaded_files:
+        current_file_names = [f.name for f in uploaded_files]
+        
+        # Check if the uploaded files list has changed
+        if current_file_names != st.session_state.uploaded_file_names:
+            with st.spinner("Extracting text from all uploaded PDFs..."):
+                combined_text = ""
+                try:
+                    for uploaded_file in uploaded_files:
+                        reader = PdfReader(uploaded_file)
+                        for page in reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                combined_text += text + "\n"
+                    
+                    # Update context with text from all documents
+                    st.session_state.pdf_context = combined_text
+                    st.session_state.uploaded_file_names = current_file_names
+                    st.session_state.pdf_summary = ""  # Reset summary for new calculation
+                    st.success(f"Successfully processed {len(uploaded_files)} PDF(s)!")
+                except Exception as e:
+                    st.error(f"Error reading PDF files: {e}")
     
     # Clear PDF Button
-    if st.session_state.pdf_context and st.button("❌ Remove PDF Context"):
+    if st.session_state.pdf_context and st.button("❌ Remove All PDF Context"):
         st.session_state.pdf_context = ""
         st.session_state.pdf_summary = ""
-        st.success("PDF context removed!")
+        st.session_state.uploaded_file_names = []
+        st.success("All PDF contexts removed!")
         st.rerun()
 
 # --- MAIN CHAT INTERFACE ---
@@ -68,16 +77,17 @@ st.title("🤖 My Advanced Gemini Chatbot")
 
 # Display PDF Status & Automatic Summary if attached
 if st.session_state.pdf_context:
-    st.info("💡 **Active Context:** PDF is uploaded successfully!")
+    st.info(f"💡 **Active Context:** {len(st.session_state.uploaded_file_names)} PDF(s) active in memory!")
+    st.caption(f"Active Files: {', '.join(st.session_state.uploaded_file_names)}")
     
     # Automatic Summary Box (Expander)
-    with st.expander("✨ Click here to view PDF Summary", expanded=True):
+    with st.expander("✨ Click here to view Combined PDF Summary", expanded=True):
         if not st.session_state.pdf_summary:
-            with st.spinner("Generating PDF Summary..."):
+            with st.spinner("Generating Summary for all documents..."):
                 try:
                     summary_model = genai.GenerativeModel(selected_model)
                     summary_response = summary_model.generate_content(
-                        f"Provide a concise summary and key bullet points for the following text:\n\n{st.session_state.pdf_context}"
+                        f"Provide a concise combined summary and key highlights for the following text extracted from multiple documents:\n\n{st.session_state.pdf_context}"
                     )
                     st.session_state.pdf_summary = summary_response.text
                 except Exception as e:
@@ -90,7 +100,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Handle New User Input
-if user_query := st.chat_input("Ask me anything..."):
+if user_query := st.chat_input("Ask me anything about the documents..."):
     
     # Display User Message
     with st.chat_message("user"):
@@ -101,17 +111,15 @@ if user_query := st.chat_input("Ask me anything..."):
 
     try:
         model = genai.GenerativeModel(selected_model)
-        
-        # Format Complete Chat History for Gemini API (Hybrid Method)
         formatted_history = []
         
-        # If PDF context exists, inject it as the system context at the beginning
+        # Inject combined PDF context
         if st.session_state.pdf_context:
-            system_prompt = f"You are a helpful assistant. Use the following PDF content to answer the user's questions if relevant:\n\n{st.session_state.pdf_context}"
+            system_prompt = f"You are a helpful assistant. Use the following content extracted from multiple PDFs to answer the user's questions if relevant:\n\n{st.session_state.pdf_context}"
             formatted_history.append({"role": "user", "parts": [system_prompt]})
-            formatted_history.append({"role": "model", "parts": ["Understood. I will use the provided PDF context and chat history to assist you."]})
+            formatted_history.append({"role": "model", "parts": ["Understood. I will use the provided content from all PDFs and chat history to assist you."]})
         
-        # Append the ongoing conversation memory
+        # Append ongoing conversation memory
         for msg in st.session_state.messages:
             role = "user" if msg["role"] == "user" else "model"
             formatted_history.append({"role": role, "parts": [msg["content"]]})
