@@ -5,8 +5,8 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Streamlit Page Configuration
-st.set_page_config(page_title="Gemini AI RAG Chatbot", page_icon="🤖", layout="wide")
+# 🌟 1. STREAMLIT PAGE CONFIGURATION (Updated Name)
+st.set_page_config(page_title="VectorVantage AI", page_icon="🤖", layout="wide")
 
 # --- CUSTOM CSS DESIGN ---
 st.markdown("""
@@ -27,7 +27,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🌟 1. INITIALIZE SESSION STATES (முதலிலேயே இனிஷியலைஸ் செய்வதால் எர்ரர் வராது)
+# 2. INITIALIZE SESSION STATES
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pdf_chunks" not in st.session_state:
@@ -39,16 +39,16 @@ if "uploaded_file_names" not in st.session_state:
 
 # --- SIDEBAR FEATURE: API CONFIGURATION & TOOLS ---
 with st.sidebar:
-    st.title("⚙️ Advanced RAG Tools")
+    st.title("⚙️ VectorVantage Tools")
     
-    # 🌟 EXTRA FEATURE: Custom API Key input box for Users
+    # EXTRA FEATURE: Custom API Key input box for Users
     user_api_key = st.text_input(
         "Enter your Gemini API Key (Optional)", 
         type="password", 
         help="If the free tier limit is reached, you can generate your own API key from Google AI Studio and use it here."
     )
     
-    # 🌟 SMART API CONFIGURATION LOGIC
+    # SMART API CONFIGURATION LOGIC
     if user_api_key:
         genai.configure(api_key=user_api_key)
         st.success("Using your Custom API Key!")
@@ -68,16 +68,16 @@ with st.sidebar:
         st.rerun()
         
     if st.session_state.messages:
-        chat_download_text = "--- GEMINI CHAT SESSION LOG ---\n\n"
+        chat_download_text = "--- VECTORVANTAGE CHAT LOG ---\n\n"
         for msg in st.session_state.messages:
-            role_label = "User" if msg["role"] == "user" else "Gemini AI"
+            role_label = "User" if msg["role"] == "user" else "VectorVantage AI"
             chat_download_text += f"[{role_label}]: {msg['content']}\n\n"
             chat_download_text += "-"*40 + "\n\n"
         
         st.download_button(
             label="📥 Download Chat History",
             data=chat_download_text,
-            file_name="gemini_chat_history.txt",
+            file_name="vectorvantage_chat_history.txt",
             mime="text/plain",
             use_container_width=True
         )
@@ -103,20 +103,15 @@ def retrieve_relevant_chunks(query, chunks, top_k=3):
     if not chunks:
         return ""
     
-    # Add query to chunks temporarily for vectorization
     corpus = chunks + [query]
     vectorizer = TfidfVectorizer(stop_words='english')
     tfidf_matrix = vectorizer.fit_transform(corpus)
     
-    # Calculate similarity between query (last item) and all chunks
     similarity_scores = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])[0]
-    
-    # Get top_k highest scoring chunks
     top_indices = similarity_scores.argsort()[-top_k:][::-1]
     
     relevant_text = ""
     for idx in top_indices:
-        # Only include if there is some similarity
         if similarity_scores[idx] > 0.05:
             relevant_text += f"\n--- Context Source ---\n{chunks[idx]}\n"
             
@@ -137,10 +132,9 @@ if uploaded_files:
                         if text:
                             combined_text += text + "\n"
                 
-                # Store chunks instead of huge raw text
                 st.session_state.pdf_chunks = chunk_text(combined_text)
                 st.session_state.uploaded_file_names = current_file_names
-                st.session_state.pdf_summary = ""  # Reset summary
+                st.session_state.pdf_summary = ""  
                 st.success(f"Processed & split into {len(st.session_state.pdf_chunks)} intelligent chunks!")
             except Exception as e:
                 st.error(f"Error reading PDF files: {e}")
@@ -152,15 +146,14 @@ if st.session_state.pdf_chunks and st.sidebar.button("❌ Remove All PDF Context
     st.success("All PDF contexts removed!")
     st.rerun()
 
-# --- MAIN CHAT INTERFACE ---
-st.title("🤖 My Smart RAG Gemini Chatbot")
+# 🌟 3. MAIN CHAT INTERFACE (Updated Title)
+st.title("🤖 VectorVantage: Intelligent RAG Chatbot")
 
 # Display PDF Status & Automatic Summary if attached
 if st.session_state.pdf_chunks:
     st.info(f"💡 **RAG Active:** {len(st.session_state.uploaded_file_names)} PDF(s) split into {len(st.session_state.pdf_chunks)} chunks in memory!")
     st.caption(f"Active Files: {', '.join(st.session_state.uploaded_file_names)}")
     
-    # Summary optimization: Runs only ONCE per PDF upload
     with st.expander("✨ Click here to view Combined PDF Summary", expanded=False):
         if not st.session_state.pdf_summary:
             with st.spinner("Generating One-time Summary..."):
@@ -172,7 +165,6 @@ if st.session_state.pdf_chunks:
                     )
                     st.session_state.pdf_summary = summary_response.text
                 except Exception as e:
-                    # SMART ERROR HANDLING FOR RATE LIMIT DURING SUMMARY
                     if "429" in str(e) or "ResourceExhausted" in str(e):
                         st.session_state.pdf_summary = "⚠️ Rate limit reached. Provide your own API key in the sidebar to load the summary!"
                     else:
@@ -196,24 +188,20 @@ if user_query := st.chat_input("Ask me anything about the documents..."):
         model = genai.GenerativeModel(selected_model)
         formatted_history = []
         
-        # ADVANCED RAG STEP: Retrieve ONLY the relevant context for this specific query
         relevant_context = ""
         if st.session_state.pdf_chunks:
             with st.spinner("Searching document database..."):
                 relevant_context = retrieve_relevant_chunks(user_query, st.session_state.pdf_chunks, top_k=3)
         
-        # Inject the smart semantic context
         if relevant_context:
             system_prompt = f"You are a helpful assistant. Use the following dynamic context extracted from the PDFs to answer the user's question accurately:\n\n{relevant_context}"
             formatted_history.append({"role": "user", "parts": [system_prompt]})
             formatted_history.append({"role": "model", "parts": ["Understood. I will combine the relevant document chunks and chat memory to answer you."]})
         
-        # Append ongoing conversation memory
         for msg in st.session_state.messages:
             role = "user" if msg["role"] == "user" else "model"
             formatted_history.append({"role": role, "parts": [msg["content"]]})
             
-        # Generate Response
         with st.spinner("Thinking..."):
             response = model.generate_content(formatted_history)
         
@@ -224,7 +212,6 @@ if user_query := st.chat_input("Ask me anything about the documents..."):
         st.rerun()
         
     except Exception as e:
-        # SMART ERROR HANDLING FOR RATE LIMIT DURING CHAT
         if "429" in str(e) or "ResourceExhausted" in str(e):
             st.error("⚠️ Google Gemini Free Tier Rate Limit Reached! Please wait a few minutes, or enter your own API Key in the sidebar to continue.")
         else:
