@@ -1,0 +1,8 @@
+streamlit
+langchain-community
+langchain-text-splitters
+rank_bm25
+sentence-transformers
+langchain-huggingface
+faiss-cpu
+pypdf
