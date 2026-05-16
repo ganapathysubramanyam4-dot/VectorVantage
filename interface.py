@@ -27,12 +27,55 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 1. Fetch API Key from Streamlit Secrets
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.error("Please add GEMINI_API_KEY to your Streamlit Secrets!")
-    st.stop()
+# --- SIDEBAR FEATURE: API CONFIGURATION & TOOLS ---
+with st.sidebar:
+    st.title("⚙️ Advanced RAG Tools")
+    
+    # 🌟 EXTRA FEATURE: Custom API Key input box for Users
+    user_api_key = st.text_input(
+        "Enter your Gemini API Key (Optional)", 
+        type="password", 
+        help="If the free tier limit is reached, you can generate your own API key from Google AI Studio and use it here."
+    )
+    
+    # 🌟 SMART API CONFIGURATION LOGIC
+    if user_api_key:
+        genai.configure(api_key=user_api_key)
+        st.success("Using your Custom API Key!")
+    else:
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        else:
+            st.warning("Please enter a custom key above or configure GEMINI_API_KEY in Streamlit Secrets.")
+            st.stop()
+            
+    st.write("---")
+    
+    selected_model = st.selectbox("Select Model", ["gemini-2.5-flash", "gemini-2.5-pro"])
+    
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+        
+    if st.session_state.messages:
+        chat_download_text = "--- GEMINI CHAT SESSION LOG ---\n\n"
+        for msg in st.session_state.messages:
+            role_label = "User" if msg["role"] == "user" else "Gemini AI"
+            chat_download_text += f"[{role_label}]: {msg['content']}\n\n"
+            chat_download_text += "-"*40 + "\n\n"
+        
+        st.download_button(
+            label="📥 Download Chat History",
+            data=chat_download_text,
+            file_name="gemini_chat_history.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+        
+    st.write("---")
+    
+    st.subheader("📄 Smart PDF Analysis (RAG)")
+    uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
 
 # 2. Initialize Session States
 if "messages" not in st.session_state:
@@ -79,64 +122,35 @@ def retrieve_relevant_chunks(query, chunks, top_k=3):
             
     return relevant_text
 
-# --- SIDEBAR FEATURES ---
-with st.sidebar:
-    st.title("⚙️ Advanced RAG Tools")
+# --- FILE PROCESSING ---
+if uploaded_files:
+    current_file_names = [f.name for f in uploaded_files]
     
-    selected_model = st.selectbox("Select Model", ["gemini-2.5-flash", "gemini-2.5-pro"])
-    
-    if st.button("🗑️ Clear Chat History", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
-        
-    if st.session_state.messages:
-        chat_download_text = "--- GEMINI CHAT SESSION LOG ---\n\n"
-        for msg in st.session_state.messages:
-            role_label = "User" if msg["role"] == "user" else "Gemini AI"
-            chat_download_text += f"[{role_label}]: {msg['content']}\n\n"
-            chat_download_text += "-"*40 + "\n\n"
-        
-        st.download_button(
-            label="📥 Download Chat History",
-            data=chat_download_text,
-            file_name="gemini_chat_history.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-        
-    st.write("---")
-    
-    st.subheader("📄 Smart PDF Analysis (RAG)")
-    uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
-    
-    if uploaded_files:
-        current_file_names = [f.name for f in uploaded_files]
-        
-        if current_file_names != st.session_state.uploaded_file_names:
-            with st.spinner("Extracting & Chunking text from PDFs..."):
-                combined_text = ""
-                try:
-                    for uploaded_file in uploaded_files:
-                        reader = PdfReader(uploaded_file)
-                        for page in reader.pages:
-                            text = page.extract_text()
-                            if text:
-                                combined_text += text + "\n"
-                    
-                    # Store chunks instead of huge raw text
-                    st.session_state.pdf_chunks = chunk_text(combined_text)
-                    st.session_state.uploaded_file_names = current_file_names
-                    st.session_state.pdf_summary = ""  # Reset summary
-                    st.success(f"Processed & split into {len(st.session_state.pdf_chunks)} intelligent chunks!")
-                except Exception as e:
-                    st.error(f"Error reading PDF files: {e}")
-    
-    if st.session_state.pdf_chunks and st.button("❌ Remove All PDF Context", use_container_width=True):
-        st.session_state.pdf_chunks = []
-        st.session_state.pdf_summary = ""
-        st.session_state.uploaded_file_names = []
-        st.success("All PDF contexts removed!")
-        st.rerun()
+    if current_file_names != st.session_state.uploaded_file_names:
+        with st.spinner("Extracting & Chunking text from PDFs..."):
+            combined_text = ""
+            try:
+                for uploaded_file in uploaded_files:
+                    reader = PdfReader(uploaded_file)
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            combined_text += text + "\n"
+                
+                # Store chunks instead of huge raw text
+                st.session_state.pdf_chunks = chunk_text(combined_text)
+                st.session_state.uploaded_file_names = current_file_names
+                st.session_state.pdf_summary = ""  # Reset summary
+                st.success(f"Processed & split into {len(st.session_state.pdf_chunks)} intelligent chunks!")
+            except Exception as e:
+                st.error(f"Error reading PDF files: {e}")
+
+if st.session_state.pdf_chunks and st.sidebar.button("❌ Remove All PDF Context", use_container_width=True):
+    st.session_state.pdf_chunks = []
+    st.session_state.pdf_summary = ""
+    st.session_state.uploaded_file_names = []
+    st.success("All PDF contexts removed!")
+    st.rerun()
 
 # --- MAIN CHAT INTERFACE ---
 st.title("🤖 My Smart RAG Gemini Chatbot")
@@ -152,14 +166,17 @@ if st.session_state.pdf_chunks:
             with st.spinner("Generating One-time Summary..."):
                 try:
                     summary_model = genai.GenerativeModel(selected_model)
-                    # For summary we use first few chunks if text is too huge to prevent quota crash
                     summary_context = "\n".join(st.session_state.pdf_chunks[:10]) 
                     summary_response = summary_model.generate_content(
                         f"Provide a concise combined summary and key highlights for the following document text:\n\n{summary_context}"
                     )
                     st.session_state.pdf_summary = summary_response.text
                 except Exception as e:
-                    st.session_state.pdf_summary = f"Could not generate summary: {e}"
+                    # 🌟 SMART ERROR HANDLING FOR RATE LIMIT DURING SUMMARY
+                    if "429" in str(e) or "ResourceExhausted" in str(e):
+                        st.session_state.pdf_summary = "⚠️ Rate limit reached. Provide your own API key in the sidebar to load the summary!"
+                    else:
+                        st.session_state.pdf_summary = f"Could not generate summary: {e}"
         st.markdown(st.session_state.pdf_summary)
 
 # Display Past Chat Messages
@@ -207,4 +224,8 @@ if user_query := st.chat_input("Ask me anything about the documents..."):
         st.rerun()
         
     except Exception as e:
-        st.error(f"An error occurred: {e}")
+        # 🌟 SMART ERROR HANDLING FOR RATE LIMIT DURING CHAT
+        if "429" in str(e) or "ResourceExhausted" in str(e):
+            st.error("⚠️ Google Gemini Free Tier Rate Limit Reached! Please wait a few minutes, or enter your own API Key in the sidebar to continue.")
+        else:
+            st.error(f"An error occurred: {e}")
