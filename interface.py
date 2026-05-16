@@ -62,7 +62,7 @@ if st.button("Ask AI"):
                     """
                     
                     # Initialize Gemini 1.5 Flash
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    model = genai.GenerativeModel("gemini-2.5-flash")
                     response = model.generate_content(prompt)
                     
                     # Display the response
