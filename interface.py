@@ -1,157 +1,77 @@
 import streamlit as st
-import os
-from langchain_community.llms import Ollama
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.retrievers import BM25Retriever
+import google.generativeai as genai
+from PyPDF2 import PdfReader
 
-# --- Environment Setup ---
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# 1. Configure Gemini API Key from Streamlit Secrets
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+except Exception as e:
+    st.error("API Key not found. Please add GEMINI_API_KEY to your Streamlit Secrets.")
 
-# 1. Page Configuration
-st.set_page_config(page_title="VectorVantage AI", layout="wide")
+# Function to extract text from uploaded PDF files
+def get_pdf_text(pdf_docs):
+    text = ""
+    for pdf in pdf_docs:
+        pdf_reader = PdfReader(pdf)
+        for page in pdf_reader.pages:
+            text += page.extract_text() or ""
+    return text
 
-# --- Optimized Embeddings Loading ---
-@st.cache_resource
-def load_embeddings():
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={'device': 'cpu'}
-    )
+# 2. Streamlit UI Layout
+st.set_page_config(page_title="VectorVantage RAG AI", layout="wide")
+st.title("VectorVantage: PDF AI Assistant 📚🚀")
+st.write("Upload your PDF documents and ask questions based on their content.")
 
-embeddings = load_embeddings()
-DB_FAISS_PATH = 'faiss_index'
-
-# --- SideBar: Document Management & ML Status ---
+# Sidebar for PDF Uploads
 with st.sidebar:
-    st.title("🚀 VectorVantage")
-    st.markdown("---")
+    st.subheader("Your Documents")
+    pdf_docs = st.file_uploader(
+        "Upload your PDF files here", 
+        type="pdf", 
+        accept_multiple_files=True
+    )
     
-    st.header("⚙️ ML System Status")
-    st.info("""
-    **Search:** Hybrid (BM25 + FAISS)  
-    **Memory:** Context Re-writing  
-    **Model:** Mistral-7B  
-    """)
-    
-    st.divider()
-    st.header("📂 Document Management")
-    uploaded_files = st.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
-    
-    if st.button("Process Documents"):
-        if uploaded_files:
-            with st.spinner("Building Intelligent Index..."):
-                all_docs = []
-                if not os.path.exists("temp_pdf"):
-                    os.makedirs("temp_pdf")
-                
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join("temp_pdf", uploaded_file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
+    if st.button("Process Files"):
+        if pdf_docs:
+            with st.spinner("Processing PDF files..."):
+                # Store the extracted text into Streamlit session state
+                st.session_state.raw_text = get_pdf_text(pdf_docs)
+                st.success("PDF files processed successfully!")
+        else:
+            st.warning("Please upload at least one PDF file first.")
+
+# 3. Main Chat Interface
+user_question = st.text_input("Ask a question about your uploaded PDFs:")
+
+if st.button("Ask AI"):
+    if user_question:
+        # Check if text exists in session state
+        if "raw_text" in st.session_state and st.session_state.raw_text:
+            with st.spinner("Searching for answers..."):
+                try:
+                    # Structured prompt to feed context to Gemini
+                    prompt = f"""
+                    You are a professional AI assistant. Answer the user's question accurately based only on the provided context.
+                    If the answer cannot be found or inferred from the context, explicitly state: "The answer to your question is not available in the provided PDF documents."
                     
-                    loader = PyPDFLoader(file_path)
-                    data = loader.load()
-                    all_docs.extend(data)
-                
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=100)
-                splits = text_splitter.split_documents(all_docs)
-                
-                db = FAISS.from_documents(splits, embeddings)
-                db.save_local(DB_FAISS_PATH)
-                st.session_state.splits = splits
-                st.success("Indexing Successful!")
-        else:
-            st.error("Please upload a PDF.")
-
-    st.divider()
-    if st.button("Reset Conversation"):
-        st.session_state.messages = []
-        st.session_state.chat_history = ""
-        st.rerun()
-
-# --- Main UI with Tabs ---
-st.title("📑 VectorVantage AI Assistant")
-tab1, tab2 = st.tabs(["💬 Smart Chat", "📊 Document Insights"])
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = ""
-
-with tab1:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    if user_query := st.chat_input("Ask VectorVantage..."):
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        with st.chat_message("user"):
-            st.markdown(user_query)
-
-        if os.path.exists(DB_FAISS_PATH) and "splits" in st.session_state:
-            # அசிஸ்டென்ட் லோட் ஆகுறதுக்கு முன்னாடி llm-ஐ CPU-க்கு போர்ஸ் பண்றோம்
-            llm = Ollama(model="mistral", base_url="http://127.0.0.1:11434")
-            
-            # STEP 1: CONTEXTUAL QUERY RE-WRITING
-            search_query = user_query
-            if st.session_state.chat_history:
-                try:
-                    rewrite_prompt = f"Based on this history: {st.session_state.chat_history}. Re-write this question as a search query: {user_query}. Just give the question, nothing else."
-                    search_query = llm.invoke(rewrite_prompt).strip()
-                except:
-                    search_query = user_query
-
-            with st.chat_message("assistant", avatar="🧠"):
-                st.markdown("### VectorVantage")
-                
-                db = FAISS.load_local(DB_FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
-                vector_docs = db.similarity_search(search_query, k=2)
-                
-                bm25 = BM25Retriever.from_documents(st.session_state.splits)
-                bm25.k = 2
-                keyword_docs = bm25.invoke(search_query)
-                
-                combined_docs = vector_docs + keyword_docs
-                context = "\n".join([d.page_content for d in combined_docs])
-                source_info = [f"{os.path.basename(d.metadata.get('source', 'Unknown'))} (Page: {d.metadata.get('page',0)+1})" for d in combined_docs]
-
-                response_placeholder = st.empty()
-                full_response = ""
-                
-                final_prompt = f"Context: {context}\nHistory: {st.session_state.chat_history}\nQuestion: {user_query}\nAnswer:"
-                
-                try:
-                    for chunk in llm.stream(final_prompt):
-                        full_response += chunk
-                        response_placeholder.markdown(full_response + "▌")
-                    response_placeholder.markdown(full_response)
+                    Context:
+                    {st.session_state.raw_text}
+                    
+                    Question: {user_question}
+                    Answer:
+                    """
+                    
+                    # Initialize Gemini 1.5 Flash
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    response = model.generate_content(prompt)
+                    
+                    # Display the response
+                    st.success("Response:")
+                    st.write(response.text)
+                    
                 except Exception as e:
-                    st.error(f"Ollama Connection Error. Please ensure 'ollama serve' is running in CMD.")
-
-                with st.expander("📚 Reference Sources"):
-                    for info in list(set(source_info)):
-                        st.write(f"📍 {info}")
-                
-                st.session_state.chat_history += f"\nUser: {user_query}\nAI: {full_response}\n"
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    st.error(f"An error occurred: {e}")
         else:
-            st.warning("Please process documents first!")
-
-with tab2:
-    st.header("🔍 Automated Document Analysis")
-    if "splits" in st.session_state:
-        st.write(f"**Total Text Chunks Analyzed:** {len(st.session_state.splits)}")
-        if st.button("Generate Key Insights"):
-            with st.spinner("Analyzing..."):
-                try:
-                    insight_llm = Ollama(model="mistral", base_url="http://127.0.0.1:11434")
-                    sample = st.session_state.splits[0].page_content[:800] # மெமரி எர்ரர் வராம இருக்க அளவு குறைச்சுருக்கேன்
-                    insight = insight_llm.invoke(f"Summarize this in 5 short points: {sample}")
-                    st.info(insight)
-                except:
-                    st.error("Failed to generate insights. Check if Ollama is running.")
+            st.info("Please upload your PDF documents and click 'Process Files' in the sidebar first.")
     else:
-        st.info("Upload and process a document to see insights here.")
+        st.warning("Please enter a question before clicking Ask AI.")
