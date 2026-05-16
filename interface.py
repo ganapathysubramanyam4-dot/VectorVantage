@@ -27,6 +27,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# 🌟 1. INITIALIZE SESSION STATES (முதலிலேயே இனிஷியலைஸ் செய்வதால் எர்ரர் வராது)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "pdf_chunks" not in st.session_state:
+    st.session_state.pdf_chunks = []
+if "pdf_summary" not in st.session_state:
+    st.session_state.pdf_summary = ""
+if "uploaded_file_names" not in st.session_state:
+    st.session_state.uploaded_file_names = []
+
 # --- SIDEBAR FEATURE: API CONFIGURATION & TOOLS ---
 with st.sidebar:
     st.title("⚙️ Advanced RAG Tools")
@@ -76,16 +86,6 @@ with st.sidebar:
     
     st.subheader("📄 Smart PDF Analysis (RAG)")
     uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
-
-# 2. Initialize Session States
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "pdf_chunks" not in st.session_state:
-    st.session_state.pdf_chunks = []
-if "pdf_summary" not in st.session_state:
-    st.session_state.pdf_summary = ""
-if "uploaded_file_names" not in st.session_state:
-    st.session_state.uploaded_file_names = []
 
 # --- HELPER FUNCTIONS FOR RAG ---
 def chunk_text(text, chunk_size=1000, overlap=200):
@@ -172,7 +172,7 @@ if st.session_state.pdf_chunks:
                     )
                     st.session_state.pdf_summary = summary_response.text
                 except Exception as e:
-                    # 🌟 SMART ERROR HANDLING FOR RATE LIMIT DURING SUMMARY
+                    # SMART ERROR HANDLING FOR RATE LIMIT DURING SUMMARY
                     if "429" in str(e) or "ResourceExhausted" in str(e):
                         st.session_state.pdf_summary = "⚠️ Rate limit reached. Provide your own API key in the sidebar to load the summary!"
                     else:
@@ -224,7 +224,7 @@ if user_query := st.chat_input("Ask me anything about the documents..."):
         st.rerun()
         
     except Exception as e:
-        # 🌟 SMART ERROR HANDLING FOR RATE LIMIT DURING CHAT
+        # SMART ERROR HANDLING FOR RATE LIMIT DURING CHAT
         if "429" in str(e) or "ResourceExhausted" in str(e):
             st.error("⚠️ Google Gemini Free Tier Rate Limit Reached! Please wait a few minutes, or enter your own API Key in the sidebar to continue.")
         else:
