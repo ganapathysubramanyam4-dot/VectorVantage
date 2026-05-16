@@ -26,7 +26,7 @@ st.markdown("""
         padding-bottom: 7rem;
     }
     </style>
-""", unsafe_allowed_html=True)
+""", unsafe_allow_html=True)  # Fixed the spelling error here (unsafe_allow_html)
 
 # 1. Fetch API Key from Streamlit Secrets
 if "GEMINI_API_KEY" in st.secrets:
@@ -57,7 +57,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
         
-    # --- NEW FEATURE: DOWNLOAD CHAT HISTORY ---
+    # --- DOWNLOAD CHAT HISTORY FEATURE ---
     if st.session_state.messages:
         # Preparing the chat history text format
         chat_download_text = "--- GEMINI CHAT SESSION LOG ---\n\n"
@@ -164,7 +164,7 @@ if user_query := st.chat_input("Ask me anything about the documents..."):
             st.markdown(response.text)
             
         st.session_state.messages.append({"role": "assistant", "content": response.text})
-        st.rerun() # Forces page refresh to show the download button as soon as chat updates
+        st.rerun()  # Forces page refresh to show download button instantly
         
     except Exception as e:
         st.error(f"An error occurred: {e}")
