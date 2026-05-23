@@ -13,7 +13,7 @@ About the Project
 VectorVantage is an advanced Retrieval-Augmented Generation (RAG) system built to enable context-aware querying across multiple PDF documents. This platform allows users to interact with their data seamlessly, supporting both local inference for data privacy and cloud-based processing for high-speed performance.
 
 Live Demo
-Click here to access the live app
+https://vectorvantage-9nhwxip5nmxukipnx7b8hk.streamlit.app/
 
 Key Features
 Intelligent RAG: Uses semantic search and vector embeddings for precise, context-aware responses.
@@ -111,7 +111,7 @@ How to Run Locally
 Clone the repository:
 
 Bash
-git clone https://github.com/your-username/VectorVantage.git
+git clone https://github.com/ganapathysubramanyam4-dot/VectorVantage.git
 cd VectorVantage
 Install dependencies:
 
